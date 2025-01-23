@@ -57,7 +57,7 @@ The Streamlit app integrates both projects into two distinct pages:
 #### Features
 •	Page Navigation: Sidebar navigation to switch between projects.
 •	Interactive Inputs: Users can input features such as route, airline, time, and service ratings.
-•	Visualizations: Display trends and feature importance for both projects.
+•	Visualizations: Display trends and feature importance.
 •	Real-time Predictions: Provide results based on user inputs.
 #### Technical Implementation
 •	Regression Page: Implements the flight price prediction pipeline.
