@@ -3,42 +3,77 @@ import pandas as pd
 import pickle
 import streamlit as st
 from datetime import datetime
-import matplotlib.pyplot as plt
 
-# Load models using pickle
-le_path = r"C:\Users\user\Desktop\Flight_Customer_Prediction\Customer_Satisfaction_Prediction\label_encoder.pkl"
-xgb_model_path = r"C:\Users\user\Desktop\Flight_Customer_Prediction\Customer_Satisfaction_Prediction\xgb_model.pkl"
-flight_model_path = r"C:\Users\user\Desktop\Flight_Customer_Prediction\Flight_Price_Prediction\Flight.pkl"
+# Define the paths for the necessary files
+SATISFACTION_BASE_PATH = r'C:\Users\user\Desktop\Flight_Customer_Prediction\Customer_Satisfaction_Prediction'
+PRICE_BASE_PATH = r'C:\Users\user\Desktop\Flight_Customer_Prediction\Flight_Price_Prediction'
 
-le = pickle.load(open(le_path, "rb"))
-xgb_model = pickle.load(open(xgb_model_path, "rb"))
-flight_model = pickle.load(open(flight_model_path, "rb"))
+XGB_MODEL_PATH = f"{SATISFACTION_BASE_PATH}\\xgb_classifier.pkl"
+SCALER_PATH = f"{SATISFACTION_BASE_PATH}\\scaler.pkl"
+FEATURE_NAMES_PATH = f"{SATISFACTION_BASE_PATH}\\feature_names.pkl"
 
-# Functions
-def satisfaction_prediction(input_data):
-    prediction = xgb_model.predict(input_data)
-    if prediction[0] == 0:
-        return "The passenger is neutral or dissatisfied with their flight!"
-    else:
-        return "The passenger was satisfied with their flight!"
+FLIGHT_MODEL_PATH = f"{PRICE_BASE_PATH}\\Flight.pkl"
 
-def label_encode(data):
-    cat = ['Type of Travel', 'Class', 'Customer Type']
-    for name in cat:
-        data[name] = data[name].apply(lambda x: le.classes_[0] if x not in le.classes_ else x)
-        data[name] = le.transform(data[name])
+# Load the trained models, scaler, and feature names
+try:
+    with open(XGB_MODEL_PATH, 'rb') as file:
+        xgb_classifier = pickle.load(file)
+
+    with open(SCALER_PATH, 'rb') as file:
+        scaler = pickle.load(file)
+
+    with open(FEATURE_NAMES_PATH, 'rb') as file:
+        feature_names = pickle.load(file)
+
+    with open(FLIGHT_MODEL_PATH, 'rb') as file:
+        Flight = pickle.load(file)
+
+except FileNotFoundError as e:
+    st.error(f"Missing file: {e.filename}. Please ensure all necessary files are in the correct directories.")
+    st.stop()
+
+# Function to preprocess user input
+def preprocess_input(data):
+    # Perform one-hot encoding for categorical features
+    data = pd.get_dummies(data, columns=['Gender', 'Customer Type', 'Type of Travel'], drop_first=True)
+
+    # Map class categories to integers
+    class_mapping = {"Eco": 0, "Eco Plus": 1, "Business": 2}
+    data['Class'] = data['Class'].map(class_mapping)
+
+    # Add missing features with default values
+    for feature in feature_names:
+        if feature not in data.columns:
+            data[feature] = 0
+
+    # Reorder the columns to match the training order
+    data = data[feature_names]
+
     return data
+
+# Function to make satisfaction predictions
+def make_satisfaction_prediction(input_data):
+    # Preprocess the input data
+    processed_data = preprocess_input(input_data)
+
+    # Scale the input data
+    scaled_data = scaler.transform(processed_data)
+
+    # Predict using the loaded model
+    prediction = xgb_classifier.predict(scaled_data)
+    return prediction
 
 def flight_prediction(input_data):
     input_data_as_numpy_array = np.asarray(input_data)
     input_data_reshaped = input_data_as_numpy_array.reshape(1, -1)
-    prediction = flight_model.predict(input_data_reshaped)
+    prediction = Flight.predict(input_data_reshaped)
     rounded_value = round(prediction[0], 2)
     return rounded_value
 
+# Main function
 def main():
-    st.sidebar.title("Airline Prediction Apps")
-    app_mode = st.sidebar.selectbox("Choose the app", ["Passenger Satisfaction Prediction", "Flight Price Prediction"])
+    st.sidebar.title("Airline Prediction App")
+    app_mode = st.sidebar.radio("Choose the app", ["Passenger Satisfaction Prediction", "Flight Price Prediction"])
 
     st.markdown("""
         <style>
@@ -81,13 +116,14 @@ def main():
     """, unsafe_allow_html=True)
 
     if app_mode == "Passenger Satisfaction Prediction":
-        st.markdown("<h1 class='main-title'>✈️ Airline Passenger Satisfaction</h1>", unsafe_allow_html=True)
-        st.markdown("<h3 class='subheader'>Web App - Survey</h3>", unsafe_allow_html=True)
+        st.markdown("<h1 class='main-title'>✈️ Passenger Satisfaction Prediction</h1>", unsafe_allow_html=True)
+        st.markdown("<h3 class='subheader'>Input Passenger Details Below</h3>", unsafe_allow_html=True)
 
+        # Collect user input
         customer_type = st.selectbox("Are you a New Customer for this airline?", ['Disloyal Customer', 'Loyal Customer'], index=1)
         type_travel = st.selectbox("What was the purpose of your flight?", ["Personal Travel", "Business Travel"])
         class1 = st.selectbox("What was the Class of your flight?", ['Eco', 'Business', 'Eco Plus'])
-
+        gender = st.selectbox("Select your Gender", ['Male', 'Female'])
         online_boarding = st.radio("Satisfaction level for Online Boarding?", [0, 1, 2, 3, 4, 5], horizontal=True)
         inflight_wifi = st.radio("Satisfaction level of the Inflight Wifi Service?", [0, 1, 2, 3, 4, 5], horizontal=True)
         entertainment = st.radio("Satisfaction level of the Inflight Entertainment?", [0, 1, 2, 3, 4, 5], horizontal=True)
@@ -96,42 +132,30 @@ def main():
         leg_room = st.radio("How would you rate the Leg Room Service?", [0, 1, 2, 3, 4, 5], horizontal=True)
         cleanliness = st.radio("How would you rate the Cleanliness?", [0, 1, 2, 3, 4, 5], horizontal=True)
 
-        df_dict = {
+        # Create a DataFrame from the user input
+        input_data = pd.DataFrame({
             'Online boarding': online_boarding,
             'Inflight wifi service': inflight_wifi,
             'Type of Travel': type_travel,
             'Class': class1,
+            'Gender': gender,
             'Inflight entertainment': entertainment,
             'Seat comfort': seat_comfort,
             'Ease of Online booking': online_booking,
             'Leg room service': leg_room,
             'Cleanliness': cleanliness,
             'Customer Type': customer_type
-        }
-        user_data = pd.DataFrame([df_dict])
-        user_data_encoded = label_encode(user_data)
+        }, index=[0])  # Added index to DataFrame creation
 
-        st.write("### Input Data", user_data)
+        # Button to make prediction
+        if st.button("Predict Satisfaction"):
+            prediction = make_satisfaction_prediction(input_data)
+            if prediction[0] == 1:
+                st.success("The passenger is satisfied.")
+            elif prediction[0] == 0:
+                st.error("The passenger is not satisfied.")
+                
 
-        # Plotting satisfaction levels bar chart
-    if st.button("Passenger Satisfaction Result"):
-      Satisfaction = satisfaction_prediction(user_data_encoded)
-      if Satisfaction == "The passenger is neutral or dissatisfied with their flight!":
-        st.markdown(f"<div class='error-message'>{Satisfaction}</div>", unsafe_allow_html=True)
-      else:
-        st.markdown(f"<div class='success-message'>{Satisfaction} 🎉</div>", unsafe_allow_html=True)
-       
-      st.write("### Satisfaction Levels Bar Chart")
-      
-      plt.figure(figsize=(10, 5))
-      plt.bar(user_data.columns[:-1], user_data.iloc[0, :-1], color='skyblue')
-      plt.title("Passenger Satisfaction Inputs")
-      plt.xlabel("Features")
-      plt.ylabel("Satisfaction Level")
-      plt.xticks(rotation=45)
-      st.pyplot(plt)
-    
-           
     elif app_mode == "Flight Price Prediction":
         st.markdown("<h1 class='main-title'>💸 Flight Price Prediction</h1>", unsafe_allow_html=True)
 
@@ -193,9 +217,10 @@ def main():
             price_prediction = flight_prediction(Input)
             st.markdown(
                 f"""
-                <h3 style='text-align: center;'>You will have to pay approximately Rs. {price_prediction}</h3>
+                <h3 style='text-align: center;'>Estimated Flight Price: ₹ {price_prediction}</h3>
                 """, unsafe_allow_html=True
             )
 
+        
 if __name__ == "__main__":
     main()
